@@ -55,7 +55,7 @@ async function trainModel() {
 }
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 
@@ -122,10 +122,11 @@ if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
   });
 }
 
-// Only listen if this file is run directly (local dev)
+// Only listen if this file is run directly (local dev or long-running server like Render)
 if (process.env.NODE_ENV !== "production" || !process.env.VERCEL) {
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
+  const listenPort = typeof PORT === 'string' ? parseInt(PORT, 10) : PORT;
+  app.listen(listenPort, "0.0.0.0", () => {
+    console.log(`Server running on http://localhost:${listenPort}`);
   });
 }
 
