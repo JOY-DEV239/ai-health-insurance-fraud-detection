@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx server.ts",
     "generate-data": "tsx scripts/generate_data.ts",
-    "build": "vite build",
+    "build": "npm run generate-data && vite build",
+    "start": "node --loader tsx server.ts",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
