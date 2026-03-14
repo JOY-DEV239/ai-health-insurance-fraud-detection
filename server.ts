@@ -2,9 +2,58 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
+import fs from "fs-extra";
+import csv from "csv-parser";
+import * as tf from "@tensorflow/tfjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+let model: tf.Sequential;
+
+async function trainModel() {
+  console.log("Starting model training...");
+  const dataPath = path.join(process.cwd(), 'data', 'insurance_claims.csv');
+  
+  if (!fs.existsSync(dataPath)) {
+    console.log("No dataset found. Run 'npm run generate-data' first.");
+    return;
+  }
+
+  const claims: any[] = [];
+  return new Promise<void>((resolve, reject) => {
+    fs.createReadStream(dataPath)
+      .pipe(csv())
+      .on("data", (data) => claims.push(data))
+      .on("end", async () => {
+        const inputs = claims.map(c => [
+          parseFloat(c.claim_amount) / 10000,
+          parseFloat(c.patient_age) / 80,
+          parseFloat(c.severity_index) / 10,
+          parseFloat(c.category) / 5
+        ]);
+        const labels = claims.map(c => parseInt(c.is_fraud));
+
+        const xs = tf.tensor2d(inputs);
+        const ys = tf.tensor2d(labels, [labels.length, 1]);
+
+        model = tf.sequential();
+        model.add(tf.layers.dense({ units: 8, inputShape: [4], activation: 'relu' }));
+        model.add(tf.layers.dense({ units: 4, activation: 'relu' }));
+        model.add(tf.layers.dense({ units: 1, activation: 'sigmoid' }));
+
+        model.compile({ optimizer: 'adam', loss: 'binaryCrossentropy', metrics: ['accuracy'] });
+
+        await model.fit(xs, ys, {
+          epochs: 20,
+          verbose: 0
+        });
+
+        console.log("Model training complete.");
+        resolve();
+      });
+  });
+}
 
 async function startServer() {
   const app = express();
@@ -12,39 +61,40 @@ async function startServer() {
 
   app.use(express.json());
 
-  // Mock datasets (will be updated when user provides real ones)
-  let medicines = [
-    { name: "Amoxicillin", price: 15.50 },
-    { name: "Lisinopril", price: 12.00 },
-    { name: "Atorvastatin", price: 25.00 },
-    { name: "Metformin", price: 10.00 },
-    { name: "Amlodipine", price: 18.00 },
-    { name: "Omeprazole", price: 22.00 },
-  ];
-
-  let labTests = [
-    { name: "Complete Blood Count (CBC)", price: 45.00 },
-    { name: "Basic Metabolic Panel (BMP)", price: 60.00 },
-    { name: "Lipid Panel", price: 75.00 },
-    { name: "Liver Function Test (LFT)", price: 85.00 },
-    { name: "Hemoglobin A1c", price: 55.00 },
-    { name: "Urinalysis", price: 30.00 },
-  ];
+  // Trigger training
+  trainModel().catch(console.error);
 
   // API Routes
   app.get("/api/medicines", (req, res) => {
-    res.json(medicines);
+    // Mock data as before
+    res.json([
+      { name: "Amoxicillin", price: 15.50 },
+      { name: "Lisinopril", price: 12.00 },
+      { name: "Atorvastatin", price: 25.00 },
+    ]);
   });
 
-  app.get("/api/lab-tests", (req, res) => {
-    res.json(labTests);
-  });
+  app.post("/api/predict-fraud", async (req, res) => {
+    const { claim_amount, patient_age, severity_index, category } = req.body;
+    
+    if (!model) {
+      return res.status(503).json({ error: "Model is not trained yet" });
+    }
 
-  app.post("/api/update-datasets", (req, res) => {
-    const { type, data } = req.body;
-    if (type === 'medicines') medicines = data;
-    if (type === 'labTests') labTests = data;
-    res.json({ status: "success", message: `${type} dataset updated` });
+    const input = tf.tensor2d([[
+      claim_amount / 10000,
+      patient_age / 80,
+      severity_index / 10,
+      category / 5
+    ]]);
+
+    const prediction = model.predict(input) as tf.Tensor;
+    const score = (await prediction.data())[0];
+
+    res.json({
+      is_fraud: score > 0.5,
+      confidence: score
+    });
   });
 
   // Vite middleware for development
