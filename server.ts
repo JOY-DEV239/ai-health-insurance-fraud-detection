@@ -1,5 +1,4 @@
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import fs from "fs-extra";
@@ -13,10 +12,10 @@ let model: tf.Sequential;
 
 async function trainModel() {
   console.log("Starting model training...");
-  const dataPath = path.join(process.cwd(), 'data', 'insurance_claims.csv');
+  const dataPath = path.resolve(__dirname, 'data', 'insurance_claims.csv');
   
   if (!fs.existsSync(dataPath)) {
-    console.log("No dataset found. Run 'npm run generate-data' first.");
+    console.log(`No dataset found at ${dataPath}. Run 'npm run generate-data' first.`);
     return;
   }
 
@@ -107,7 +106,8 @@ app.post("/api/predict-fraud", async (req, res) => {
 
 // Vite middleware for development
 if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-  const vite = await createViteServer({
+  const { createServer } = await import("vite");
+  const vite = await createServer({
     server: { middlewareMode: true },
     appType: "spa",
   });
